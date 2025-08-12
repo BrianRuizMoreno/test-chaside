@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Vocacional Interactivo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="assets/styles/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    
+</head>
+<body class="gradient-bg min-h-screen flex items-center justify-center p-4">
+
+    <main id="app-container" class="max-w-4xl w-full mx-auto">
+
+        <!-- Pantalla de Bienvenida -->
+        <div id="welcome-screen" class="card p-8 md:p-12 text-center">
+            <div class="flex justify-center mb-6">
+                <img src="assets/img/logo-expo-carreras.png" alt="Logo EXPO-CARRERAS" class="h-40 md:h-48 object-contain">
+            </div>
+            <h1 class="text-4xl md:text-5xl font-extrabold text-gray-800 mb-4">Test Vocacional Interactivo</h1>
+            <p class="text-lg text-gray-600 mb-8">Descubre tus áreas de interés y las carreras que te permitirán desplegar todo tu potencial. El test dura entre 10 y 15 minutos.</p>
+            <div class="bg-indigo-50 border-l-4 border-indigo-500 text-indigo-800 p-4 rounded-lg text-left mb-8">
+                <h3 class="font-bold mb-2">¿Cómo funciona?</h3>
+                <ol class="list-decimal list-inside space-y-1">
+                    <li>Se presentarán 112 preguntas sobre tus gustos e intereses.</li>
+                    <li>Marca la casilla en todas aquellas con las que te sientas identificado.</li>
+                    <li>Al finalizar, el sistema analizará tus respuestas y te mostrará tu perfil vocacional y las carreras asociadas en tu región.</li>
+                </ol>
+            </div>
+            <button id="start-btn" class="btn-primary font-bold py-3 px-8 rounded-full text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-transform duration-300">
+                Comenzar Test
+            </button>
+        </div>
+
+        <!-- Pantalla del Cuestionario -->
+        <div id="quiz-screen" class="hidden">
+            <div class="card p-8 md:p-12">
+                <h2 id="quiz-title" class="text-2xl font-bold text-center text-gray-800 mb-2">Preguntas</h2>
+                <p id="quiz-subtitle" class="text-center text-gray-500 mb-6">Página <span id="current-page"></span> de <span id="total-pages"></span></p>
+
+                <!-- Barra de Progreso -->
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-8">
+                    <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full progress-bar-fill" style="width: 0%"></div>
+                </div>
+
+                <!-- Contenedor de Preguntas -->
+                <div id="questions-container" class="space-y-5">
+                    <!-- Las preguntas se insertarán aquí dinámicamente -->
+                </div>
+
+                <!-- Navegación -->
+                <div class="flex justify-between items-center mt-10">
+                    <button id="prev-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg hover:bg-gray-400 transition-colors">Anterior</button>
+                    <div>
+                        <button id="next-btn" class="btn-primary font-bold py-2 px-6 rounded-lg">Siguiente</button>
+                        <button id="finish-btn" class="hidden btn-primary font-bold py-2 px-6 rounded-lg bg-green-600 hover:bg-green-700">Finalizar y Ver Resultados</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Modal para pedir el nombre -->
+        <div id="name-modal" class="modal-overlay hidden">
+            <div class="card p-8 text-center w-11/12 max-w-md">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">¡Casi listo!</h2>
+                <p class="text-gray-600 mb-6">Para personalizar tus resultados, por favor, ingresa tu nombre.</p>
+                <input type="text" id="name-input" placeholder="Tu nombre aquí..." class="w-full px-4 py-2 border border-gray-300 rounded-lg mb-6 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <button id="submit-name-btn" class="w-full btn-primary font-bold py-3 rounded-lg">Ver mis Resultados</button>
+            </div>
+        </div>
+
+
+        <!-- Pantalla de Resultados -->
+        <div id="results-screen" class="hidden">
+             <div class="card p-8 md:p-12">
+                <div class="text-center">
+                    <h1 id="results-title" class="text-4xl md:text-5xl font-extrabold text-gray-800 mb-4">Tus Resultados</h1>
+                    <p id="results-intro-text" class="text-lg text-gray-600 mb-10">Estos son tus principales intereses vocacionales basados en tus respuestas.</p>
+                </div>
+
+                <!-- Gráfico de Resultados -->
+                <div id="chart-container" class="mb-12 p-6 border border-gray-200 rounded-xl">
+                    <h3 class="text-xl font-bold text-gray-700 mb-6 text-left">Perfil de Intereses</h3>
+                    <div id="chart" class="space-y-4">
+                        <!-- Las barras del gráfico se insertarán aquí -->
+                    </div>
+                </div>
+
+                <!-- Areas Destacadas y Carreras -->
+                <div id="career-recommendations" class="text-left space-y-10">
+                    <!-- Las recomendaciones se insertarán aquí -->
+                </div>
+                 
+                 <div class="flex flex-col sm:flex-row justify-center items-center gap-4 mt-12 no-print">
+                    <button id="print-btn" class="w-full sm:w-auto bg-blue-600 text-white font-bold py-3 px-8 rounded-full text-lg shadow-lg hover:shadow-xl hover:bg-blue-700 transform hover:scale-105 transition-transform duration-300">
+                        Imprimir Resultados
+                    </button>
+                    <button id="restart-btn" class="w-full sm:w-auto bg-gray-500 text-white font-bold py-3 px-8 rounded-full text-lg shadow-lg hover:shadow-xl hover:bg-gray-600 transform hover:scale-105 transition-transform duration-300">
+                        Realizar el Test Nuevamente
+                    </button>
+                 </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script src="assets/js/script.js"></script>
+</body>
+</html>
