@@ -62,7 +62,7 @@ html {
         padding: 0 !important;
     }
     body { 
-        -webkit-print-color-adjust: exact; 
+        
         font-size: 9pt;
         margin: 0 !important;
         padding: 4px !important;
