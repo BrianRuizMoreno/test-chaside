@@ -560,7 +560,7 @@
             let userName = '';
             let userEmail = '';
             let lastScores = null;
-            let N8N_WEBHOOK_URL = localStorage.getItem('n8n_webhook_url') || 'https://n8n.tu-dominio.com/webhook/test-chaside-resultados';
+            let N8N_WEBHOOK_URL = localStorage.getItem('n8n_webhook_url') || 'https://n8n.automatizaciones-physis.cloud/webhook/test-chaside-resultados';
 
             // --- ELEMENTOS DEL DOM ---
             const appContainer = document.getElementById('app-container');
