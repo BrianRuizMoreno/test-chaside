@@ -558,7 +558,9 @@
             const totalPages = Math.ceil(questions.length / questionsPerPage);
             let userAnswers = new Set();
             let userName = '';
+            let userEmail = '';
             let lastScores = null;
+            let N8N_WEBHOOK_URL = localStorage.getItem('n8n_webhook_url') || 'https://n8n.tu-dominio.com/webhook/test-chaside-resultados';
 
             // --- ELEMENTOS DEL DOM ---
             const appContainer = document.getElementById('app-container');
@@ -573,17 +575,73 @@
             const finishBtn = document.getElementById('finish-btn');
             const restartBtn = document.getElementById('restart-btn');
             const printBtn = document.getElementById('print-btn');
+            const sendEmailBtn = document.getElementById('send-email-btn');
+            const emailStatusContainer = document.getElementById('email-status-container');
             const submitNameBtn = document.getElementById('submit-name-btn');
             const nameInput = document.getElementById('name-input');
+            const emailInput = document.getElementById('email-input');
             const progressBar = document.getElementById('progress-bar');
             const currentPageSpan = document.getElementById('current-page');
             const totalPagesSpan = document.getElementById('total-pages');
             const resultsTitle = document.getElementById('results-title');
             const resultsIntroText = document.getElementById('results-intro-text');
+            const statusModal = document.getElementById('status-modal');
+            const statusModalIcon = document.getElementById('status-modal-icon');
+            const statusModalTitle = document.getElementById('status-modal-title');
+            const statusModalMessage = document.getElementById('status-modal-message');
+            const statusModalCloseBtn = document.getElementById('status-modal-close-btn');
+
+            // --- LÓGICA DE PERSISTENCIA LOCAL (RELOAD TOLERANCE) ---
+            function saveProgress() {
+                localStorage.setItem('chaside_answers', JSON.stringify(Array.from(userAnswers)));
+                localStorage.setItem('chaside_page', currentPageIndex.toString());
+                if (userName) localStorage.setItem('chaside_name', userName);
+                if (userEmail) localStorage.setItem('chaside_email', userEmail);
+            }
+
+            function loadProgress() {
+                const savedAnswers = localStorage.getItem('chaside_answers');
+                const savedPage = localStorage.getItem('chaside_page');
+                const savedName = localStorage.getItem('chaside_name');
+                const savedEmail = localStorage.getItem('chaside_email');
+
+                if (savedAnswers) {
+                    try {
+                        const arr = JSON.parse(savedAnswers);
+                        userAnswers = new Set(arr);
+                    } catch (e) { console.error('Error cargando respuestas guardadas', e); }
+                }
+                if (savedPage !== null) {
+                    currentPageIndex = parseInt(savedPage) || 0;
+                }
+                if (savedName) {
+                    userName = savedName;
+                    if (nameInput) nameInput.value = userName;
+                }
+                if (savedEmail) {
+                    userEmail = savedEmail;
+                    if (emailInput) emailInput.value = userEmail;
+                }
+            }
+
+            function clearProgress() {
+                localStorage.removeItem('chaside_answers');
+                localStorage.removeItem('chaside_page');
+                localStorage.removeItem('chaside_name');
+                localStorage.removeItem('chaside_email');
+                userAnswers.clear();
+                currentPageIndex = 0;
+                userName = '';
+                userEmail = '';
+                if (nameInput) nameInput.value = '';
+                if (emailInput) emailInput.value = '';
+            }
 
             // --- LÓGICA DE LA APLICACIÓN ---
 
             function init() {
+                loadProgress();
+
                 startBtn.addEventListener('click', startQuiz);
                 nextBtn.addEventListener('click', nextPage);
                 prevBtn.addEventListener('click', prevPage);
@@ -591,17 +649,28 @@
                 submitNameBtn.addEventListener('click', showResults);
                 restartBtn.addEventListener('click', restartQuiz);
                 printBtn.addEventListener('click', printResults);
+                if (sendEmailBtn) sendEmailBtn.addEventListener('click', sendResultsByEmail);
+                if (statusModalCloseBtn) statusModalCloseBtn.addEventListener('click', () => statusModal.classList.add('hidden'));
+
+                // Restaurar test en progreso si existen respuestas guardadas
+                if (userAnswers.size > 0 || currentPageIndex > 0) {
+                    welcomeScreen.classList.add('hidden');
+                    quizScreen.classList.remove('hidden');
+                    renderCurrentPage();
+                }
             }
 
             function startQuiz() {
                 welcomeScreen.classList.add('hidden');
                 quizScreen.classList.remove('hidden');
-                currentPageIndex = 0;
-                userAnswers.clear();
+                if (userAnswers.size === 0) {
+                    currentPageIndex = 0;
+                }
                 renderCurrentPage();
             }
             
             function restartQuiz() {
+                clearProgress();
                 resultsScreen.classList.add('hidden');
                 welcomeScreen.classList.remove('hidden');
             }
@@ -632,6 +701,7 @@
                         } else {
                             userAnswers.delete(id);
                         }
+                        saveProgress();
                     });
                 });
 
@@ -655,6 +725,7 @@
             function nextPage() {
                 if (currentPageIndex < totalPages - 1) {
                     currentPageIndex++;
+                    saveProgress();
                     renderCurrentPage();
                     appContainer.scrollIntoView();
                 }
@@ -663,13 +734,43 @@
             function prevPage() {
                 if (currentPageIndex > 0) {
                     currentPageIndex--;
+                    saveProgress();
                     renderCurrentPage();
                     appContainer.scrollIntoView();
                 }
             }
 
+            function isValidEmail(email) {
+                return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+            }
+
             function showResults() {
-                userName = nameInput.value.trim() || 'Participante';
+                const modalErrorMsg = document.getElementById('modal-error-msg');
+                const valName = nameInput ? nameInput.value.trim() : '';
+                const valEmail = emailInput ? emailInput.value.trim() : '';
+
+                if (!valName) {
+                    if (modalErrorMsg) {
+                        modalErrorMsg.textContent = 'Por favor, ingresa tu Nombre Completo para continuar.';
+                        modalErrorMsg.classList.remove('hidden');
+                    }
+                    return;
+                }
+
+                if (!valEmail || !isValidEmail(valEmail)) {
+                    if (modalErrorMsg) {
+                        modalErrorMsg.textContent = 'Por favor, ingresa un correo electrónico válido (ej: usuario@dominio.com).';
+                        modalErrorMsg.classList.remove('hidden');
+                    }
+                    return;
+                }
+
+                if (modalErrorMsg) modalErrorMsg.classList.add('hidden');
+
+                userName = valName;
+                userEmail = valEmail;
+                saveProgress();
+
                 nameModal.classList.add('hidden');
                 
                 // 1. Mostrar la pantalla de resultados y obtener contenedores
@@ -794,118 +895,308 @@
                     recommendationsContainer.insertAdjacentHTML('beforeend', recommendationHtml);
                 });
             }
-            
+
+            function showStatusModal(title, message, type = 'info', showButton = true) {
+                if (!statusModal) return;
+
+                statusModalTitle.textContent = title;
+                statusModalMessage.textContent = message;
+
+                if (type === 'loading') {
+                    statusModalIcon.innerHTML = `
+                        <svg class="animate-spin h-12 w-12 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    `;
+                } else if (type === 'success') {
+                    statusModalIcon.innerHTML = `<span class="text-green-500 text-5xl">✅</span>`;
+                } else if (type === 'error') {
+                    statusModalIcon.innerHTML = `<span class="text-amber-500 text-5xl">⚠️</span>`;
+                } else {
+                    statusModalIcon.innerHTML = `<span class="text-indigo-500 text-5xl">ℹ️</span>`;
+                }
+
+                if (showButton) {
+                    statusModalCloseBtn.classList.remove('hidden');
+                } else {
+                    statusModalCloseBtn.classList.add('hidden');
+                }
+
+                statusModal.classList.remove('hidden');
+            }
+
+            async function sendResultsByEmail() {
+                if (!lastScores || userAnswers.size === 0) {
+                    showStatusModal("Aviso", "No hay resultados suficientes para enviar por correo.", "error", true);
+                    return;
+                }
+
+                // Si el correo no existe o no es válido, se vuelve a abrir el modal de datos sin usar la ventana prompt
+                if (!userEmail || !isValidEmail(userEmail)) {
+                    nameModal.classList.remove('hidden');
+                    return;
+                }
+
+                showStatusModal("Enviando Correo", `Enviando tu informe vocacional a ${userEmail}...`, "loading", false);
+
+                // Construcción de la información completa de las 7 áreas vocacionales
+                const todasLasAreas = lastScores.map(item => ({
+                    codigoArea: item.area,
+                    titulo: areaInfo[item.area].title,
+                    emoji: areaInfo[item.area].emoji,
+                    puntaje: item.score,
+                    puntajeMaximo: 16,
+                    porcentaje: Math.round((item.score / 16) * 100),
+                    descripcion: areaInfo[item.area].description,
+                    carrerasSugeridas: (careerData[item.area] || []).map(c => ({
+                        carrera: c.name,
+                        instituciones: c.institutions
+                    }))
+                }));
+
+                const topAreas = todasLasAreas.slice(0, 2);
+
+                const payload = {
+                    usuario: {
+                        nombre: userName,
+                        email: userEmail,
+                        fechaEnvio: new Date().toLocaleDateString('es-AR') + ' ' + new Date().toLocaleTimeString('es-AR')
+                    },
+                    metadatosTest: {
+                        totalPreguntasRespondidas: userAnswers.size,
+                        preguntasSeleccionadasIds: Array.from(userAnswers)
+                    },
+                    perfilDestacado: topAreas,
+                    todasLasAreas: todasLasAreas,
+                    puntajesResumen: Object.fromEntries(lastScores.map(i => [i.area, i.score]))
+                };
+
+                try {
+                    // Envío directo al Webhook sin requerir backend Flask local
+                    const response = await fetch(N8N_WEBHOOK_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        showStatusModal("¡Envío Exitoso!", `El informe vocacional fue enviado con éxito a ${userEmail}`, "success", true);
+                    } else {
+                        throw new Error("Respuesta no válida del servidor");
+                    }
+                } catch (error) {
+                    console.error("Error al enviar correo:", error);
+                    showStatusModal("Aviso", "No se pudo enviar el correo en este momento. Puedes utilizar la opción de imprimir resultados.", "error", true);
+                }
+            }
+
 function printResults() {
     if (!lastScores) {
         alert("No hay resultados para imprimir. Por favor, completa el test primero.");
         return;
     }
 
-    const printWindow = window.open('', '_blank');
-    let printContent = `
-        <html>
-            <head>
-                <title>Resultados del Test Vocacional - ${userName}</title>
-                <script src="https://cdn.tailwindcss.com"><\/script>
-                <style>
-                    * {
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        box-sizing: border-box !important;
-                    }
-                    html, body { 
-                        font-family: 'Inter', sans-serif; 
-                        font-size: 9pt; 
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        line-height: 1.0;
-                        height: auto !important;
-                    }
-                    .print-container {
-                        padding: 4px !important;
-                        margin: 0 !important;
-                    }
-                    .print-header {
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        border-bottom: 1px solid #e5e7eb;
-                        padding: 0 !important;
-                        margin: 0 !important;
-                        margin-bottom: 4px !important;
-                        height: 110px;
-                    }
-                    .print-header h1 { 
-                        font-size: 18pt; 
-                        margin: 0 !important;
-                        padding: 0 !important;
-                    }
-                    .logo-img {
-                        width: 250px;
-                        height: 105px;
-                        object-fit: contain;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                    }
-                    .results-title {
-                        font-size: 14pt !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        margin-bottom: 4px !important;
-                        font-weight: bold;
-                        color: #374151;
-                    }
-                    @media print {
-                        body { 
-                            -webkit-print-color-adjust: exact; 
-                            print-color-adjust: exact;
-                        }
-                        * {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                        }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="print-container">
-                    <div class="print-header">
-                        <img src="assets/img/logo-expo-carreras.png" alt="Logo EXPO-CARRERAS" class="logo-img">
-                        <h1>Reporte Vocacional</h1>
-                    </div>
-                    <h2 class="results-title">Resultados de: ${userName}</h2>
-    `;
+    const fechaActual = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    
+    // Obtener la URL absoluta del logo para asegurar su renderizado en la ventana de impresión
+    const logoUrl = window.location.href.replace(/[^/]*$/, '') + 'assets/img/logo-expo-carreras.png';
 
-    // Add Recommendations with zero spacing
+    // Generar detalle de áreas destacadas y carreras/instituciones sugeridas (sin puntajes numéricos)
     const topAreas = lastScores.slice(0, 2);
-    topAreas.forEach((item, index) => {
+    let detalleAreasHtml = '';
+
+    topAreas.forEach(item => {
         if (item.score === 0) return;
         const info = areaInfo[item.area];
         const careers = careerData[item.area] || [];
-        printContent += `
-    <div style="margin-bottom: 8px !important;">
-        <h2 style="font-size: 12pt; margin: 0 !important; margin-bottom: 2px !important; font-weight: bold;"><span style="font-size: 16pt;">${info.emoji}</span> ${info.title}</h2>
-        <p style="font-size: 8pt; margin: 0 !important; margin-bottom: 4px !important; line-height: 1.0;">${info.description}</p>
-        <h3 style="font-size: 10pt; margin: 0 !important; margin-bottom: 2px !important; font-weight: bold;">Carreras Sugeridas:</h3>
-        <ul style="margin: 0 !important; padding: 0 !important; margin-left: 12px !important;">`;
-        careers.forEach(career => {
-            printContent += `<li style="font-size: 8pt; margin: 0 !important; padding: 0 !important; margin-bottom: 1px !important; line-height: 1.0;"><strong>${career.name}</strong></li>`;
-            career.institutions.forEach(inst => {
-                printContent += `<li style="font-size: 7pt; margin: 0 !important; padding: 0 !important; margin-left: 8px !important; line-height: 0.9;">• ${inst.name} (${inst.city} - ${inst.type})</li>`;
-            });
-        });
-        printContent += `</ul></div>`;
+
+        let carrerasHtml = careers.map(c => {
+            const instHtml = c.institutions.map(inst => `
+                <li style="font-size: 10px; color: #374151; margin-bottom: 2px; line-height: 1.3;">
+                    • <strong>${inst.name}</strong> 
+                    <span style="font-size: 9px; color: #4b5563; background: #f3f4f6; padding: 1px 5px; border-radius: 3px; font-weight: 500;">${inst.city}</span>
+                    <span style="font-size: 9px; color: #1d4ed8; background: #eff6ff; padding: 1px 5px; border-radius: 3px; font-weight: 600;">${inst.type}</span>
+                </li>
+            `).join('');
+
+            return `
+                <div style="margin-bottom: 8px; background: #f9fafb; padding: 8px 12px; border-radius: 6px; border-left: 3px solid #4f46e5; page-break-inside: avoid; break-inside: avoid;">
+                    <div style="font-weight: 700; font-size: 11px; color: #111827; margin-bottom: 3px;">${c.name}</div>
+                    <ul style="list-style: none; padding-left: 0; margin: 0;">
+                        ${instHtml}
+                    </ul>
+                </div>
+            `;
+        }).join('');
+
+        detalleAreasHtml += `
+            <div style="margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 8px; border-bottom: 2px solid #e0e7ff; padding-bottom: 4px; margin-bottom: 6px;">
+                    <span style="font-size: 18px;">${info.emoji}</span>
+                    <h3 style="font-size: 14px; font-weight: 800; color: #1e1b4b; margin: 0;">${info.title}</h3>
+                </div>
+                <p style="font-size: 11px; color: #4b5563; margin-top: 4px; margin-bottom: 8px; line-height: 1.4;">${info.description}</p>
+                <div style="font-weight: 700; font-size: 11px; color: #374151; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.3px;">Carreras e Instituciones Recomendadas:</div>
+                ${carrerasHtml}
+            </div>
+        `;
     });
 
-    printContent += `
+    const printWindow = window.open('', '_blank');
+    const printContent = `
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <title>Recomendación Vocacional - ${userName}</title>
+            <style>
+                @page {
+                    size: A4 portrait;
+                    margin: 15mm;
+                }
+                * {
+                    box-sizing: border-box;
+                }
+                html, body {
+                    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+                    color: #1f2937;
+                    background: #ffffff;
+                    font-size: 11px;
+                    line-height: 1.3;
+                    margin: 0;
+                    padding: 0;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                .print-wrapper {
+                    width: 100%;
+                    margin: 0 auto;
+                }
+                .header-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    border-bottom: 2px solid #4f46e5;
+                    padding-bottom: 8px;
+                    margin-bottom: 12px;
+                }
+                .logo-img {
+                    height: 48px;
+                    max-width: 220px;
+                    object-fit: contain;
+                }
+                .doc-title {
+                    text-align: right;
+                }
+                .doc-title h1 {
+                    font-size: 16px;
+                    font-weight: 800;
+                    color: #4f46e5;
+                    margin: 0 0 2px 0;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                .doc-title p {
+                    font-size: 10px;
+                    color: #6b7280;
+                    margin: 0;
+                }
+                .user-card {
+                    background: #f8fafc;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 6px;
+                    padding: 8px 14px;
+                    margin-bottom: 14px;
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .user-card td {
+                    padding: 2px 8px;
+                }
+                .user-field-label {
+                    font-weight: 700;
+                    color: #64748b;
+                    text-transform: uppercase;
+                    font-size: 8px;
+                    display: block;
+                }
+                .user-field-value {
+                    font-weight: 600;
+                    color: #0f172a;
+                    font-size: 11px;
+                }
+                .section-header {
+                    font-size: 12px;
+                    font-weight: 800;
+                    color: #1e293b;
+                    margin-bottom: 10px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.3px;
+                    border-bottom: 1px solid #cbd5e1;
+                    padding-bottom: 4px;
+                }
+                .footer {
+                    margin-top: 16px;
+                    border-top: 1px solid #e5e7eb;
+                    padding-top: 8px;
+                    text-align: center;
+                    font-size: 9px;
+                    color: #9ca3af;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="print-wrapper">
+                <!-- Encabezado del Documento -->
+                <table class="header-table">
+                    <tr>
+                        <td style="vertical-align: middle;">
+                            <img src="${logoUrl}" alt="Logo EXPO-CARRERAS" class="logo-img">
+                        </td>
+                        <td class="doc-title" style="vertical-align: middle;">
+                            <h1>Recomendación Vocacional</h1>
+                            <p>Informe de Carreras e Instituciones</p>
+                        </td>
+                    </tr>
+                </table>
+
+                <!-- Ficha del Estudiante compacta en Tabla -->
+                <table class="user-card">
+                    <tr>
+                        <td style="width: 40%;">
+                            <span class="user-field-label">Estudiante</span>
+                            <span class="user-field-value">${userName}</span>
+                        </td>
+                        <td style="width: 35%;">
+                            <span class="user-field-label">Email</span>
+                            <span class="user-field-value">${userEmail || 'No especificado'}</span>
+                        </td>
+                        <td style="width: 25%; text-align: right;">
+                            <span class="user-field-label">Fecha</span>
+                            <span class="user-field-value">${fechaActual}</span>
+                        </td>
+                    </tr>
+                </table>
+
+                <!-- Carreras e Instituciones Recomendadas sin saltos forzados de bloque completo -->
+                <div class="section-header">Carreras e Instituciones Recomendadas según Perfil Vocacional</div>
+                ${detalleAreasHtml}
+
+                <!-- Pie de Página -->
+                <div class="footer">
+                    Documento de Orientación Vocacional | EXPO-CARRERAS
                 </div>
-                <script>
-                    setTimeout(() => {
+            </div>
+
+            <script>
+                window.onload = function() {
+                    setTimeout(function() {
                         window.print();
                         window.close();
-                    }, 500);
-                <\/script>
-            </body>
+                    }, 350);
+                };
+            <\/script>
+        </body>
         </html>
     `;
 
